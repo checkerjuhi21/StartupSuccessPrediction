@@ -1,3 +1,4 @@
+#Import Libraries
 from pyspark.ml import Pipeline
 from pyspark.ml.classification import DecisionTreeClassifier
 from pyspark.ml.feature import StringIndexer, VectorIndexer
@@ -8,54 +9,21 @@ import pyspark.sql.functions as F
 from pyspark.mllib.evaluation import MulticlassMetrics
 from pyspark.sql.types import FloatType
 from pyspark.ml.classification import LogisticRegression
+from pyspark.shell import spark
+from pyspark import SparkContext
+import csv
 
-
-'''
-The dataset contains 40 columns containing the following information:
-agefirstfunding_year – quantitative
-agelastfunding_year – quantitative
-funding_rounds – quantitative
-fundingtotalusd – quantitative
-milestones – quantitative
-agefirstmilestone_year – quantitative
-agelastmilestone_year – quantitative
-state – categorical
-industry_type – categorical
-has_VC – categorical
-has_angel – categorical
-has_roundA – categorical
-has_roundB – categorical
-has_roundC – categorical
-has_roundD – categorical
-avg_participants – quantitative
-is_top500 – categorical
-status(acquired/closed) – categorical (the target variable, if a startup is ‘acquired’ by some other organization, means the startup succeed) 
-'''
-
-'''
-Reading the dataset into a dataframe
-'''
+#Preprocessing Dataset
 dataset = spark.read.csv('startupdataset.csv', inferSchema=True, header=True)
 
-'''
-The dataset is further divided into two parts where:
-1) The first 8 columns provide information about the company in a behaviorial format
-2) The next 31 columnns provides quantitative information about the company that will be used to predict the success of the Startup
-'''
 f_dataset = dataset.select(dataset.columns[9:])
 
-'''
-The Actual success values of the startups a value of 1 in acq/closed implies it was a success and 0 indicating a faliure 
-'''
 f_dataset.groupBy('acq/closed').count().show()
 
 f_dataset.printSchema()
 f_dataset.describe().show()
 f_dataset.columns
 
-'''
-Creating the features matrix for classification
-'''
 assembler = VectorAssembler( inputCols= ['age_first_funding_year', 'age_last_funding_year', 'age_first_milestone_year', 'age_last_milestone_year', 'funding_rounds', 'funding_total_usd', 'milestones', 'is_CA', 'is_NY', 'is_MA', 'is_TX', 'is_otherstate', 'is_software', 'is_web', 'is_mobile', 'is_enterprise', 'is_advertising', 'is_gamesvideo', 'is_ecommerce', 'is_biotech', 'is_consulting', 'is_othercategory', 'has_VC', 'has_angel', 'has_roundA', 'has_roundB', 'has_roundC', 'has_roundD', 'avg_participants', 'is_top500'], outputCol="features")
 
 assemb_output = assembler.transform(f_dataset)
@@ -64,48 +32,52 @@ final_dataset = assemb_output.select('features', 'acq/closed')
 
 final_dataset.show()
 
-'''
-The dataset is split into 70% of the rows for training and 30% for testing.
-'''
-training_df, testing_df = final_dataset.randomSplit([0.7,0.3])
+#Training and Testing Split
+training_df, testing_df = final_dataset.randomSplit([0.7,0.3], 99)
 
 training_df.count()
 testing_df.count()
 final_dataset.count()
 
-'''
-Applying Decision Tree Classifier to the training data
-'''
+#Predicting using Decision Tree
 dt_classifier = DecisionTreeClassifier(labelCol="acq/closed").fit(training_df)
-
-'''
-Using the classifier to predict values of testing data
-'''
 dt_predictions = dt_classifier.transform(testing_df)
 dt_predictions.show()
 
-'''
-The featureImportances API defines the weights that were given to each feature when classifying 
-'''
-dt_classifier.featureImportances
+impfeatu = dt_classifier.featureImportances
 
-'''
-Creating a confusion Matrix to understand the predicted values
-'''
+#Confusion Matrix
 preds_and_labels = dt_predictions.select(['prediction','acq/closed']).withColumn('label', F.col('acq/closed').cast(FloatType())).orderBy('prediction')
 
 preds_and_labels = preds_and_labels.select(['prediction','label'])
 
 metrics = MulticlassMetrics(preds_and_labels.rdd.map(tuple))
 
-print(metrics.confusionMatrix().toArray())
+print("Confusion matrix: ", metrics.confusionMatrix().toArray())
 
-print(metrics.accuracy)
+print("Accuracy: ",metrics.accuracy)
 
-print(metrics.precision(1.0))
+print("Precision 1 : ",metrics.precision(1.0))
 
-print(metrics.precision(0.0))
+print("Precision 0 : ",metrics.precision(0.0))
 
-print(metrics.recall(1.0))
+print("Recall 1 : ",metrics.recall(1.0))
 
-print(metrics.recall(0.0))
+print("Recall 0 : ",metrics.recall(0.0))
+
+cm = metrics.confusionMatrix().toArray()
+accuracy = metrics.accuracy
+precision1 = metrics.precision(1.0)
+precision0 = metrics.precision(0.0)
+recall1 = metrics.recall(1.0)
+recall0 = metrics.recall(0.0)
+
+values = { "Confusion Matrix":cm, "Accuracy" : accuracy, "Precision 1.0" : precision1,
+            "Precision 0.0": precision0, "Recall 1.0" : recall1, "Recall 0.0": recall0, "Important Feature": impfeatu }
+
+w = csv.writer(open("Result_DecisionTree.csv", "w"))
+
+for key, val in values.items():
+
+    # write every key and value to file
+    w.writerow([key, val])
