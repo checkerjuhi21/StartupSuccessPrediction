@@ -1,0 +1,12 @@
+Precision 0.0,0.6881243063263041
+Precision 1.0,0.7545416138572032
+Confusion Matrix,"[[  620.   581.]
+ [  281.  1786.]]"
+Training count,7808
+Final Dataset count,11076
+Testing count,3268
+Accuracy,0.7362301101591188
+ROC,0.7983144336645182
+Time(s),16.68697214126587
+Recall 0.0,0.5162364696086594
+Recall 1.0,0.8640541848089018
